@@ -79,12 +79,18 @@ if [ "$SYSTEMD_MODE" = true ]; then
     fi
 
     # WSLg can leave behind unusable PulseAudio runtime state. For xRDP
-    # sessions, start a clean user PulseAudio instance with the xRDP profile.
+    # sessions, disable the user socket-activated PulseAudio units for this
+    # login and run a clean daemon with the xRDP profile instead.
     systemctl --user stop pulseaudio.service pulseaudio.socket >/dev/null 2>&1 || true
     systemctl --user reset-failed pulseaudio.service pulseaudio.socket >/dev/null 2>&1 || true
+    systemctl --user mask --runtime pulseaudio.service pulseaudio.socket >/dev/null 2>&1 || true
+    pkill -u "$(id -u)" -x pulseaudio >/dev/null 2>&1 || true
+    mkdir -p "$XDG_RUNTIME_DIR/pulse"
+    chmod 700 "$XDG_RUNTIME_DIR/pulse"
     rm -f "$XDG_RUNTIME_DIR/pulse/native" "$XDG_RUNTIME_DIR/pulse/pid"
-    if [ -f "$PULSE_SCRIPT" ] && ! pgrep -u "$(id -u)" -x pulseaudio >/dev/null 2>&1; then
-        pulseaudio --start -nF "$PULSE_SCRIPT" >/dev/null 2>&1 || true
+    if [ -f "$PULSE_SCRIPT" ]; then
+        nohup pulseaudio --daemonize=no -nF "$PULSE_SCRIPT" \
+            >"$HOME/.xrdp-pulseaudio.log" 2>&1 &
     fi
 
     # GNOME over xRDP on WSL needs a direct launch here. Going through the
