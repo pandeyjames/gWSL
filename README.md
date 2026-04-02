@@ -2,6 +2,8 @@
 
 gWSL installs a full Ubuntu GNOME desktop on WSL and exposes it through xRDP for use with the Windows Remote Desktop client (`mstsc`). The project is built around a scripted install flow that imports an Ubuntu root filesystem, configures GNOME, xRDP, audio support, service startup, and generates the Windows-side shortcuts needed to launch the desktop and console sessions.
 
+![gWSL GNOME desktop preview](./docs/preview.png)
+
 ## What It Supports
 
 - Ubuntu 20.04 (Focal)

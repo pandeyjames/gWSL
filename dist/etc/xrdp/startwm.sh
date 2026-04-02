@@ -48,6 +48,7 @@ if [ "$SYSTEMD_MODE" = true ]; then
     mkdir -p "$XDG_RUNTIME_DIR/pulse"
     rm -f "$XDG_RUNTIME_DIR/pulse/native" "$XDG_RUNTIME_DIR/pulse/pid"
     export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+    export PULSE_SCRIPT=/etc/xrdp/pulse/default.pa
 
     if systemctl --user show-environment >/dev/null 2>&1; then
         systemctl --user import-environment \
@@ -75,6 +76,15 @@ if [ "$SYSTEMD_MODE" = true ]; then
             GVFS_REMOTE_VOLUME_MONITOR_IGNORE XRDP_SESSION XRDP_SOCKET_PATH \
             XRDP_PULSE_SINK_SOCKET XRDP_PULSE_SOURCE_SOCKET PULSE_SCRIPT \
             XRDP_USE_HELPER XRDP_USE_MULTISESSION >/dev/null 2>&1 || true
+    fi
+
+    # WSLg can leave behind unusable PulseAudio runtime state. For xRDP
+    # sessions, start a clean user PulseAudio instance with the xRDP profile.
+    systemctl --user stop pulseaudio.service pulseaudio.socket >/dev/null 2>&1 || true
+    systemctl --user reset-failed pulseaudio.service pulseaudio.socket >/dev/null 2>&1 || true
+    rm -f "$XDG_RUNTIME_DIR/pulse/native" "$XDG_RUNTIME_DIR/pulse/pid"
+    if [ -f "$PULSE_SCRIPT" ] && ! pgrep -u "$(id -u)" -x pulseaudio >/dev/null 2>&1; then
+        pulseaudio --start -nF "$PULSE_SCRIPT" >/dev/null 2>&1 || true
     fi
 
     # GNOME over xRDP on WSL needs a direct launch here. Going through the
