@@ -5,11 +5,76 @@
 run_level=${1:-2}
 export RUNLEVEL=$run_level
 INSTANCE="WSLINSTANCENAME"
+LOCK_DIR=/run/initwsl.lock
+SYSTEMD_MODE=false
+
+start_core_daemons() {
+    mkdir -p /run/dbus /var/run/xrdp /run/user
+    chmod 1777 /run/user
+
+    if [ ! -S /run/dbus/system_bus_socket ] && [ -x /etc/init.d/dbus ]; then
+        /etc/init.d/dbus start >/dev/null 2>&1 || true
+    fi
+    if ! pgrep -x dbus-daemon >/dev/null 2>&1; then
+        /usr/bin/dbus-daemon --system >/dev/null 2>&1 &
+    fi
+    if ! pgrep -f /usr/lib/accountsservice/accounts-daemon >/dev/null 2>&1; then
+        /usr/lib/accountsservice/accounts-daemon >/dev/null 2>&1 &
+    fi
+    if ! pgrep -f /usr/lib/upower/upowerd >/dev/null 2>&1; then
+        /usr/lib/upower/upowerd >/dev/null 2>&1 &
+    fi
+    if ! pgrep -f /usr/lib/policykit-1/polkitd >/dev/null 2>&1; then
+        /usr/lib/policykit-1/polkitd --no-debug >/dev/null 2>&1 &
+    fi
+
+    # xrdp startup through the distro init script is unreliable under WSL because
+    # that script delegates to a fake systemctl shim. Start the daemons directly.
+    if ! pgrep -x xrdp-sesman >/dev/null 2>&1; then
+        /usr/sbin/xrdp-sesman >/dev/null 2>&1 &
+    fi
+    if ! pgrep -x xrdp >/dev/null 2>&1; then
+        /usr/sbin/xrdp >/dev/null 2>&1 &
+    fi
+}
+
+stop_core_daemons() {
+    pkill -x xrdp >/dev/null 2>&1 || true
+    pkill -f xrdp-sesman >/dev/null 2>&1 || true
+    pkill -f /usr/lib/accountsservice/accounts-daemon >/dev/null 2>&1 || true
+    pkill -f /usr/lib/upower/upowerd >/dev/null 2>&1 || true
+    pkill -f /usr/lib/policykit-1/polkitd >/dev/null 2>&1 || true
+}
+
+start_systemd_services() {
+    mkdir -p /tmp/.ICE-unix /run/user
+    chmod 1777 /tmp/.ICE-unix /run/user
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable xrdp-sesman xrdp >/dev/null 2>&1 || true
+    systemctl is-active --quiet xrdp-sesman || \
+        systemctl start xrdp-sesman >/dev/null 2>&1 || true
+    systemctl is-active --quiet xrdp || \
+        systemctl start xrdp >/dev/null 2>&1 || true
+}
+
+stop_systemd_services() {
+    systemctl stop xrdp xrdp-sesman >/dev/null 2>&1 || true
+}
+
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    exit 0
+fi
+trap 'rmdir "$LOCK_DIR" >/dev/null 2>&1 || true' EXIT
 
 # --- 2. The /etc/wsl.conf Fix (Ensures DNS is handled by WSL) ---
 if [ -f /etc/wsl.conf ]; then
-    # Check if the line exists; if so, ensure generateResolvConf is False
-    sed -i 's/^generateResolvConf.*/generateResolvConf = False/' /etc/wsl.conf
+    # Keep DNS generation enabled for the WSL2/systemd path used by gWSL.
+    sed -i 's/^generateResolvConf.*/generateResolvConf = true/' /etc/wsl.conf
+    grep -Eqi '^\s*systemd\s*=\s*true\s*$' /etc/wsl.conf && SYSTEMD_MODE=true
+fi
+
+if [ -d /run/systemd/system ]; then
+    SYSTEMD_MODE=true
 fi
 
 # --- 3. System Cleanup & Fixes ---
@@ -17,20 +82,30 @@ fi
 find /tmp -mindepth 1 -delete 2>/dev/null
 mkdir -p /tmp/.ICE-unix
 chmod 1777 /tmp/.ICE-unix
+mkdir -p /run/user
+chmod 1777 /run/user
 
-# Setup dummy scripts to satisfy legacy installers
-rm -rf /usr/sbin/runlevel /usr/bin/systemctl /usr/sbin/systemctl /usr/sbin/policy-rc.d
-echo 'echo "N 2"' > /usr/sbin/runlevel
-echo 'exit 0' > /usr/sbin/policy-rc.d
-ln -sf /etc/systemctl3.py /usr/bin/systemctl
-chmod +x /usr/sbin/runlevel /usr/sbin/policy-rc.d /usr/bin/systemctl
+if [ "$SYSTEMD_MODE" = true ]; then
+    rm -f /usr/sbin/policy-rc.d
+    if dpkg-divert --list | grep -q "/sbin/initctl"; then
+        rm -f /sbin/initctl
+        dpkg-divert --quiet --rename --remove /sbin/initctl >/dev/null 2>&1 || true
+    fi
+else
+    # Setup dummy scripts to satisfy legacy installers
+    rm -rf /usr/sbin/runlevel /usr/bin/systemctl /usr/sbin/systemctl /usr/sbin/policy-rc.d
+    echo 'echo "N 2"' > /usr/sbin/runlevel
+    echo 'exit 0' > /usr/sbin/policy-rc.d
+    ln -sf /etc/systemctl3.py /usr/bin/systemctl
+    chmod +x /usr/sbin/runlevel /usr/sbin/policy-rc.d /usr/bin/systemctl
+fi
 
 # WSL Patches
 touch /run/initctl
 strip --remove-section=.note.ABI-tag /usr/lib/x86_64-linux-gnu/libQt5Core.so.5 2>/dev/null
 
 # Divert initctl to prevent service errors during apt upgrades
-if ! dpkg-divert --list | grep -q "/sbin/initctl"; then
+if [ "$SYSTEMD_MODE" != true ] && ! dpkg-divert --list | grep -q "/sbin/initctl"; then
     dpkg-divert --local --rename --add /sbin/initctl
     ln -fs /bin/true /sbin/initctl
 fi
@@ -58,6 +133,11 @@ if [ "$run_level" -eq "0" ]; then
             "$rc_service" stop
         fi
     done
+    if [ "$SYSTEMD_MODE" = true ]; then
+        stop_systemd_services
+    else
+        stop_core_daemons
+    fi
 
     echo "------------------------------------------------"
     echo "Services stopped. Terminating..."
@@ -73,15 +153,29 @@ echo "Runlevel $run_level | $INSTANCE @ $IP_ADDR"
 echo "------------------------------------------------"
 
 # --- 7. Service Execution (Start/Stop for RL 1, 2, etc.) ---
-# First, Kill services assigned to this runlevel
-for rc_service in /etc/rc${run_level}.d/K*; do
-    [ -e "$rc_service" ] && "$rc_service" stop
-done
+if [ "$SYSTEMD_MODE" = true ]; then
+    start_systemd_services
+else
+    # First, Kill services assigned to this runlevel
+    for rc_service in /etc/rc${run_level}.d/K*; do
+        [ -e "$rc_service" ] && "$rc_service" stop
+    done
 
-# Second, Start services assigned to this runlevel
-for rc_service in /etc/rc${run_level}.d/S*; do
-    [ -e "$rc_service" ] && "$rc_service" start
-done
+    # Second, Start services assigned to this runlevel
+    for rc_service in /etc/rc${run_level}.d/S*; do
+        [ -e "$rc_service" ] && "$rc_service" start
+    done
+
+    # GNOME under xRDP on WSL still needs a few core daemons that the SysV
+    # startup sequence does not consistently keep alive in this environment.
+    start_core_daemons
+fi
+
+# When initwsl is launched by a scheduled task or background helper there is no
+# useful interactive console. In that case, start services and return cleanly.
+if [ ! -t 0 ] || [ ! -t 1 ]; then
+    exit 0
+fi
 
 # --- 8. Interactive Menu ---
 echo ""

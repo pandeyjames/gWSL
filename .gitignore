@@ -1,2 +1,16 @@
 
 .DS_Store
+
+# Local WSL VM storage
+vms/*
+!vms/.gitkeep
+
+# Local build / staging artifacts
+.tmp_xrdp/
+.tmp_xorgxrdp/
+tmp_xrdp.service
+tmp_xrdp-sesman.service
+
+# Local runtime / diagnostics
+*.log
+wsl-basepath-backup.json

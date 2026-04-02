@@ -1,7 +1,7 @@
 favorites=exo-web-browser.desktop,exo-mail-reader.desktop,exo-file-manager.desktop,exo-terminal-emulator.desktop
 recent=
-button-title=\ xWSL\ \ 
-button-icon=/usr/local/share/pixmaps/xWSL-White.png
+button-title=\ gWSL\ \ 
+button-icon=/usr/local/share/pixmaps/gWSL-White.png
 button-single-row=false
 show-button-title=true
 show-button-icon=true
