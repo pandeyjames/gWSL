@@ -258,6 +258,7 @@ REM Configure distro-specific settings
 %GO% "chmod 644 /tmp/gWSL/dist/etc/wsl.conf"
 %GO% "chmod 755 /tmp/gWSL/dist/etc/profile.d/gWSL.sh /tmp/gWSL/dist/usr/local/bin/restartwsl /tmp/gWSL/dist/usr/local/bin/initwsl /tmp/gWSL/dist/etc/init.d/xrdp /tmp/gWSL/dist/etc/xrdp/startwm.sh /tmp/gWSL/dist/etc/skel/.xsession ; chmod -R 700 /tmp/gWSL/dist/etc/skel/.config ; chmod -R 700 /tmp/gWSL/dist/etc/skel/.local ; chmod 700 /tmp/gWSL/dist/etc/skel/.mozilla"
 %GO% "cp -Rp /tmp/gWSL/dist/* / ; cp -Rp /tmp/gWSL/dist/etc/skel/.config /root ; cp -Rp /tmp/gWSL/dist/etc/skel/.local /root ; chown -R xrdp:root /etc/xrdp ; update-rc.d xrdp defaults"
+%GO% "if [ ! -s /etc/xrdp/xrdp_keyboard.ini ] || [ ! -s /etc/xrdp/km-00000409.ini ]; then rm -f /etc/xrdp/xrdp_keyboard.ini ; DEBIAN_FRONTEND=noninteractive apt-get -yq -o Dpkg::Options::=--force-confmiss -o Dpkg::Options::=--force-confold install --reinstall xrdp ; fi ; chmod 644 /etc/xrdp/xrdp_keyboard.ini /etc/xrdp/km-*.ini 2>/dev/null || true"
 %GO% "if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then systemctl daemon-reload ; systemctl enable xrdp-sesman xrdp ; systemctl restart xrdp-sesman xrdp ; fi"
 
 REM ============================================================================
