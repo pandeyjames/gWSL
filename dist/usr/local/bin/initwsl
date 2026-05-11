@@ -47,8 +47,9 @@ stop_core_daemons() {
 }
 
 start_systemd_services() {
-    mkdir -p /tmp/.ICE-unix /run/user
-    chmod 1777 /tmp/.ICE-unix /run/user
+    mkdir -p /tmp/.ICE-unix /tmp/.X11-unix /run/user
+    chmod 1777 /tmp/.ICE-unix /run/user 2>/dev/null || true
+    chmod 1777 /tmp/.X11-unix 2>/dev/null || true
     systemctl daemon-reload >/dev/null 2>&1 || true
     systemctl enable xrdp-sesman xrdp >/dev/null 2>&1 || true
     systemctl is-active --quiet xrdp-sesman || \
@@ -82,6 +83,7 @@ fi
 find /tmp -mindepth 1 -delete 2>/dev/null
 mkdir -p /tmp/.ICE-unix
 chmod 1777 /tmp/.ICE-unix
+chmod 1777 /tmp/.X11-unix 2>/dev/null || true
 mkdir -p /run/user
 chmod 1777 /run/user
 

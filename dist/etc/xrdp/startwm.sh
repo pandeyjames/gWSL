@@ -93,6 +93,13 @@ if [ "$SYSTEMD_MODE" = true ]; then
             >"$HOME/.xrdp-pulseaudio.log" 2>&1 &
     fi
 
+    # Some WSL2/systemd logins do not get a user session bus socket. In that
+    # case GNOME exits immediately unless we bootstrap a private bus here.
+    if [ ! -S "$XDG_RUNTIME_DIR/bus" ] && command -v dbus-run-session >/dev/null 2>&1; then
+        unset DBUS_SESSION_BUS_ADDRESS
+        exec dbus-run-session -- gnome-session --session=ubuntu-xrdp --disable-acceleration-check
+    fi
+
     # GNOME over xRDP on WSL needs a direct launch here. Going through the
     # distro Xsession wrapper under systemd causes helpers to come up before
     # the xRDP/X11 environment is fully visible.

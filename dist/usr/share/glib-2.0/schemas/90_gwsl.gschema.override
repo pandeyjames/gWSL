@@ -1,0 +1,3 @@
+[org.gnome.shell]
+disable-user-extensions=true
+enabled-extensions=[]
